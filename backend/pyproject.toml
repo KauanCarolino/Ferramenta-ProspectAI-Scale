@@ -1,0 +1,27 @@
+[project]
+name = "prospectai-scale"
+version = "0.1.0"
+description = "Prospecção automática via Instagram Direct"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+prospectai = "cli:main"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["config", "main", "celery_app"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["api*", "adapters*", "services*", "database*", "schemas*", "utils*", "cli*"]

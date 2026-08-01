@@ -1,0 +1,85 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+.Python
+
+# --- Virtualenvs ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Env & local DB ---
+*.sqlite3
+*.db
+/backend/media/
+/backend/staticfiles/
+/backend/.env
+.env
+.env.local
+backend/data/
+backend/prospectai.db
+
+# Alembic versions ARE versioned — do not ignore backend/database/migrations/
+
+# --- Testing & coverage ---
+.pytest_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+nosetests.xml
+
+# --- Logs ---
+*.log
+/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- Editor / OS ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Node / Frontend ---
+node_modules/
+package-lock.json
+dist/
+build/
+.parcel-cache/
+.cache/
+.tanstack/
+dist-ssr/
+*.local
+
+# --- Misc ---
+*.bak
+*.tmp
+
+# Docs decisions
+docs/decisions/
+docs/decisions/*
+
+# --- Benchmark results ---
+backend/benchmark_results.json
+
+# Instagram sessions (never commit)
+backend/data/sessions/
+
+#IA
+.cursor/
+.cursorignore
+.cursorrules
