@@ -56,6 +56,15 @@ class InboxReply:
     message_id: str | None = None
 
 
+@dataclass
+class FollowerInfo:
+    """Seguidor da conta logada (fonte de leads via `list_followers`)."""
+
+    username: str
+    full_name: str | None = None
+    user_id: str | None = None
+
+
 @runtime_checkable
 class InstagramAdapter(Protocol):
     """Contrato de canal para Instagram Direct."""
@@ -96,6 +105,10 @@ class InstagramAdapter(Protocol):
 
     def resolve_user_id(self, username: str) -> str | None:
         """Mapeia handle → id de usuário do Instagram."""
+        ...
+
+    def list_followers(self, *, amount: int | None = None) -> list[FollowerInfo]:
+        """Lista seguidores da conta logada (fonte de leads sem CSV)."""
         ...
 
 
@@ -162,6 +175,18 @@ class StubInstagramAdapter:
 
     def resolve_user_id(self, username: str) -> str | None:
         return f"stub-uid-{username}"
+
+    def list_followers(self, *, amount: int | None = None) -> list[FollowerInfo]:
+        total = amount if amount is not None else 5
+        logger.info("StubInstagramAdapter.list_followers → %s seguidores (simulado)", total)
+        return [
+            FollowerInfo(
+                username=f"stub_follower_{i}",
+                full_name=f"Seguidor Stub {i}",
+                user_id=f"stub-uid-follower-{i}",
+            )
+            for i in range(1, total + 1)
+        ]
 
 
 class InstagrapiAdapter:
@@ -519,6 +544,55 @@ class InstagrapiAdapter:
         except Exception:
             logger.exception("resolve_user_id falhou para @%s", handle)
             return None
+
+    def list_followers(self, *, amount: int | None = None) -> list[FollowerInfo]:
+        from instagrapi.exceptions import ChallengeRequired, LoginRequired
+
+        ready_err = self._ensure_session()
+        if ready_err:
+            logger.warning("list_followers sem sessão (@%s): %s", self.username, ready_err)
+            return []
+
+        own_id = self._own_user_id()
+        if own_id is None:
+            try:
+                own_id = int(self._client.user_id_from_username(self.username))
+            except Exception:
+                logger.exception("list_followers: não foi possível resolver o próprio user_id (@%s)", self.username)
+                return []
+
+        try:
+            kwargs: dict[str, Any] = {}
+            if amount is not None:
+                kwargs["amount"] = amount
+            raw_followers = self._client.user_followers(own_id, **kwargs)
+        except ChallengeRequired:
+            self._challenge_pending = True
+            self._session_valid = False
+            logger.warning("ChallengeRequired em list_followers (@%s)", self.username)
+            return []
+        except LoginRequired:
+            self._session_valid = False
+            logger.warning("LoginRequired em list_followers (@%s)", self.username)
+            return []
+        except Exception:
+            logger.exception("Falha em list_followers (@%s)", self.username)
+            return []
+
+        followers: list[FollowerInfo] = []
+        values = raw_followers.values() if isinstance(raw_followers, dict) else raw_followers or []
+        for user in values:
+            uname = getattr(user, "username", None)
+            if not uname:
+                continue
+            followers.append(
+                FollowerInfo(
+                    username=str(uname).lstrip("@").lower(),
+                    full_name=(getattr(user, "full_name", None) or None) or None,
+                    user_id=str(getattr(user, "pk", None) or getattr(user, "id", None) or "") or None,
+                )
+            )
+        return followers
 
     # --- handlers / challenge ---
 

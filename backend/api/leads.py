@@ -11,12 +11,18 @@ from sqlalchemy.orm import Session
 from database.models.lead import Lead
 from database.session import get_db
 from schemas.common import MessageResponse
-from schemas.importer import ImportConfirmRequest, ImportConfirmResponse, ImportPreviewResponse
+from schemas.importer import (
+    ImportConfirmRequest,
+    ImportConfirmResponse,
+    ImportFromFollowersRequest,
+    ImportPreviewResponse,
+)
 from schemas.lead import LeadCreate, LeadRead, LeadUpdate
 from services import leads as lead_service
 from services.campaigns.service import get_campaign
 from services.importer.service import confirm_import, preview_from_confirm_leads, preview_import
 from services.logging.service import write_log
+from services.sourcing.service import pull_and_confirm_followers
 
 router = APIRouter()
 
@@ -110,6 +116,33 @@ def import_confirm(
         action="import",
         result="success",
         campaign_id=payload.campaign_id,
+        details=f"inserted={result.inserted} skipped={result.skipped_duplicates}",
+    )
+    return result
+
+
+@router.post("/import/from-followers", response_model=ImportConfirmResponse)
+def import_from_followers(
+    payload: ImportFromFollowersRequest,
+    db: Session = Depends(get_db),
+) -> ImportConfirmResponse:
+    """Puxa seguidores da conta Instagram informada e já persiste como leads da campanha."""
+    get_campaign(db, payload.campaign_id)
+    try:
+        result = pull_and_confirm_followers(
+            db,
+            campaign_id=payload.campaign_id,
+            account_id=payload.account_id,
+            amount=payload.amount,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    write_log(
+        db,
+        action="import_followers",
+        result="success",
+        campaign_id=payload.campaign_id,
+        account_id=payload.account_id,
         details=f"inserted={result.inserted} skipped={result.skipped_duplicates}",
     )
     return result

@@ -14,18 +14,24 @@ venv/
 env/
 ENV/
 
-# --- Env & local DB ---
-*.sqlite3
-*.db
-/backend/media/
-/backend/staticfiles/
-/backend/.env
+# --- Env & secrets ---
 .env
 .env.local
-backend/data/
-backend/prospectai.db
+backend/.env
 
+# --- Local DB & data ---
+*.sqlite3
+*.db
+backend/data/
+backend/media/
+backend/staticfiles/
 # Alembic versions ARE versioned — do not ignore backend/database/migrations/
+
+# --- Celery ---
+# Beat schedule + SQLite sidecars (-wal / -shm)
+celerybeat-schedule*
+celerybeat.pid
+celeryd.pid
 
 # --- Testing & coverage ---
 .pytest_cache/
@@ -36,6 +42,7 @@ backend/prospectai.db
 htmlcov/
 coverage.xml
 nosetests.xml
+backend/benchmark_results.json
 
 # --- Logs ---
 *.log
@@ -59,27 +66,18 @@ node_modules/
 package-lock.json
 dist/
 build/
+dist-ssr/
 .parcel-cache/
 .cache/
 .tanstack/
-dist-ssr/
 *.local
 
 # --- Misc ---
 *.bak
 *.tmp
-
-# Docs decisions
 docs/decisions/
-docs/decisions/*
 
-# --- Benchmark results ---
-backend/benchmark_results.json
-
-# Instagram sessions (never commit)
-backend/data/sessions/
-
-#IA
+# --- Cursor / IA ---
 .cursor/
 .cursorignore
 .cursorrules

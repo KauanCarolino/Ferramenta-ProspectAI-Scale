@@ -300,6 +300,50 @@ def test_instagrapi_check_inbox_mapping(tmp_path) -> None:
 
 
 @pytest.mark.unit
+def test_stub_list_followers_returns_amount() -> None:
+    adapter = StubInstagramAdapter(username="me")
+    followers = adapter.list_followers(amount=3)
+    assert len(followers) == 3
+    assert followers[0].username == "stub_follower_1"
+    assert followers[0].full_name
+
+
+@pytest.mark.unit
+def test_instagrapi_list_followers_maps_users(tmp_path) -> None:
+    client = MagicMock()
+    client.user_id = 99
+    follower_a = SimpleNamespace(pk=1, username="Alice", full_name="Alice A")
+    follower_b = SimpleNamespace(pk=2, username="bob_b", full_name="")
+    client.user_followers.return_value = {1: follower_a, 2: follower_b}
+
+    session = tmp_path / "u.session"
+    session.write_text("{}")
+    adapter = InstagrapiAdapter(username="me", session_path=str(session), client=client)
+    followers = adapter.list_followers(amount=50)
+
+    assert len(followers) == 2
+    assert followers[0].username == "alice"
+    assert followers[0].full_name == "Alice A"
+    assert followers[1].username == "bob_b"
+    assert followers[1].full_name is None
+    client.user_followers.assert_called_once_with(99, amount=50)
+
+
+@pytest.mark.unit
+def test_instagrapi_list_followers_challenge_returns_empty(tmp_path) -> None:
+    from instagrapi.exceptions import ChallengeRequired
+
+    client = MagicMock()
+    client.user_id = 99
+    client.user_followers.side_effect = ChallengeRequired({"message": "challenge"})
+    session = tmp_path / "u.session"
+    session.write_text("{}")
+    adapter = InstagrapiAdapter(username="me", session_path=str(session), client=client)
+    followers = adapter.list_followers()
+    assert followers == []
+
+
+@pytest.mark.unit
 def test_login_account_updates_status(db_session: Session) -> None:
     account = Account(
         username=f"acc_{uuid.uuid4().hex[:6]}",

@@ -5,6 +5,7 @@ import { EmptyState } from '@/components/EmptyState'
 import { ErrorState } from '@/components/ErrorState'
 import { LoadingState } from '@/components/LoadingState'
 import { PageHeader } from '@/components/PageHeader'
+import { fetchAccounts } from '@/lib/api/accounts'
 import { fetchCampaigns } from '@/lib/api/campaigns'
 import { getApiErrorMessage } from '@/lib/api/client'
 import {
@@ -13,6 +14,7 @@ import {
   deleteLead,
   fetchLeads,
   previewImport,
+  pullFollowers,
   updateLead,
   type ImportPreviewResponse,
   type Lead,
@@ -258,6 +260,9 @@ function LeadsPage() {
   const createCampaignSelectId = useId()
   const filterSelectId = useId()
   const fileInputId = useId()
+  const followersCampaignSelectId = useId()
+  const followersAccountSelectId = useId()
+  const followersAmountId = useId()
   const createNomeId = useId()
   const createEmpresaId = useId()
   const createCargoId = useId()
@@ -270,6 +275,10 @@ function LeadsPage() {
   const [filterCampaignId, setFilterCampaignId] = useState('')
   const [preview, setPreview] = useState<ImportPreviewResponse | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [followersCampaignId, setFollowersCampaignId] = useState('')
+  const [followersAccountId, setFollowersAccountId] = useState('')
+  const [followersAmount, setFollowersAmount] = useState(150)
+  const [followersFeedback, setFollowersFeedback] = useState<string | null>(null)
   const [editLead, setEditLead] = useState<Lead | null>(null)
   const [listFeedback, setListFeedback] = useState<string | null>(null)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -284,6 +293,12 @@ function LeadsPage() {
   const campaignsQuery = useQuery({
     queryKey: ['campaigns'],
     queryFn: fetchCampaigns,
+    retry: 1,
+  })
+
+  const accountsQuery = useQuery({
+    queryKey: ['accounts'],
+    queryFn: fetchAccounts,
     retry: 1,
   })
 
@@ -305,8 +320,15 @@ function LeadsPage() {
       const firstId = campaignsQuery.data[0].id
       if (!importCampaignId) setImportCampaignId(firstId)
       if (!createCampaignId) setCreateCampaignId(firstId)
+      if (!followersCampaignId) setFollowersCampaignId(firstId)
     }
-  }, [importCampaignId, createCampaignId, campaignsQuery.data])
+  }, [importCampaignId, createCampaignId, followersCampaignId, campaignsQuery.data])
+
+  useEffect(() => {
+    if (accountsQuery.data && accountsQuery.data.length > 0 && !followersAccountId) {
+      setFollowersAccountId(accountsQuery.data[0].id)
+    }
+  }, [followersAccountId, accountsQuery.data])
 
   const previewMutation = useMutation({
     mutationFn: (file: File) => {
@@ -341,6 +363,24 @@ function LeadsPage() {
         `Importação concluída: ${result.inserted} inseridos, ${result.skipped_duplicates} duplicados ignorados.`,
       )
       setPreview(null)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['leads'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard', 'summary'] }),
+      ])
+    },
+  })
+
+  const pullFollowersMutation = useMutation({
+    mutationFn: () => {
+      if (!followersCampaignId || !followersAccountId) {
+        throw new Error('Selecione campanha e conta')
+      }
+      return pullFollowers(followersCampaignId, followersAccountId, followersAmount)
+    },
+    onSuccess: async (result) => {
+      setFollowersFeedback(
+        `Seguidores importados: ${result.inserted} inseridos, ${result.skipped_duplicates} duplicados ignorados.`,
+      )
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['leads'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard', 'summary'] }),
@@ -607,6 +647,150 @@ function LeadsPage() {
         {feedback ? (
           <p className="text-sm text-emerald-700" role="status">
             {feedback}
+          </p>
+        ) : null}
+      </section>
+
+      <section
+        aria-label="Puxar seguidores"
+        className="mb-6 space-y-4 rounded-lg border border-slate-200 bg-white p-4"
+      >
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">
+            Puxar seguidores da minha conta
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Sem planilha, sem copiar um por um: importa os seguidores direto
+            como leads. O envio continua automático e respeita os limites
+            anti-ban (não sai tudo de uma vez).
+          </p>
+        </div>
+
+        {accountsQuery.isLoading ? (
+          <LoadingState label="Carregando contas…" />
+        ) : null}
+
+        {accountsQuery.isError ? (
+          <ErrorState
+            message={getApiErrorMessage(
+              accountsQuery.error,
+              'Falha ao carregar contas',
+            )}
+            onRetry={() => {
+              void accountsQuery.refetch()
+            }}
+          />
+        ) : null}
+
+        {!accountsQuery.isLoading &&
+        !accountsQuery.isError &&
+        (accountsQuery.data?.length ?? 0) === 0 ? (
+          <EmptyState
+            title="Nenhuma conta Instagram cadastrada"
+            description="Cadastre e faça login em uma conta antes de puxar seguidores."
+          />
+        ) : null}
+
+        {campaigns.length > 0 && (accountsQuery.data?.length ?? 0) > 0 ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1">
+              <label
+                htmlFor={followersCampaignSelectId}
+                className="block text-sm font-medium text-slate-700"
+              >
+                Campanha
+              </label>
+              <select
+                id={followersCampaignSelectId}
+                value={followersCampaignId}
+                onChange={(e) => {
+                  setFollowersCampaignId(e.target.value)
+                  setFollowersFeedback(null)
+                  pullFollowersMutation.reset()
+                }}
+                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              >
+                {campaigns.map((campaign) => (
+                  <option key={campaign.id} value={campaign.id}>
+                    {campaign.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="min-w-0 flex-1">
+              <label
+                htmlFor={followersAccountSelectId}
+                className="block text-sm font-medium text-slate-700"
+              >
+                Conta Instagram
+              </label>
+              <select
+                id={followersAccountSelectId}
+                value={followersAccountId}
+                onChange={(e) => {
+                  setFollowersAccountId(e.target.value)
+                  setFollowersFeedback(null)
+                  pullFollowersMutation.reset()
+                }}
+                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              >
+                {(accountsQuery.data ?? []).map((account) => (
+                  <option key={account.id} value={account.id}>
+                    @{account.username}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:w-32">
+              <label
+                htmlFor={followersAmountId}
+                className="block text-sm font-medium text-slate-700"
+              >
+                Quantidade
+              </label>
+              <input
+                id={followersAmountId}
+                type="number"
+                min={1}
+                max={1000}
+                value={followersAmount}
+                onChange={(e) => setFollowersAmount(Number(e.target.value) || 1)}
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={
+                pullFollowersMutation.isPending ||
+                !followersCampaignId ||
+                !followersAccountId
+              }
+              onClick={() => {
+                setFollowersFeedback(null)
+                pullFollowersMutation.reset()
+                pullFollowersMutation.mutate()
+              }}
+              className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+            >
+              {pullFollowersMutation.isPending
+                ? 'Importando…'
+                : 'Puxar seguidores'}
+            </button>
+          </div>
+        ) : null}
+
+        {pullFollowersMutation.isError ? (
+          <p className="text-sm text-red-600" role="alert">
+            {getApiErrorMessage(
+              pullFollowersMutation.error,
+              'Falha ao puxar seguidores',
+            )}
+          </p>
+        ) : null}
+
+        {followersFeedback ? (
+          <p className="text-sm text-emerald-700" role="status">
+            {followersFeedback}
           </p>
         ) : null}
       </section>

@@ -53,3 +53,11 @@ class ImportConfirmResponse(BaseModel):
     campaign_id: uuid.UUID
     inserted: int
     skipped_duplicates: int
+
+
+class ImportFromFollowersRequest(BaseModel):
+    """Puxa seguidores da conta Instagram e já persiste como leads (sem CSV)."""
+
+    campaign_id: uuid.UUID
+    account_id: uuid.UUID
+    amount: int = Field(default=150, ge=1, le=1000)

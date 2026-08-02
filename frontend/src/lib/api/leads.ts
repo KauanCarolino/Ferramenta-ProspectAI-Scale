@@ -153,3 +153,18 @@ export async function confirmImport(
     },
   })
 }
+
+export async function pullFollowers(
+  campaignId: string,
+  accountId: string,
+  amount: number,
+): Promise<ImportConfirmResponse> {
+  return apiFetch<ImportConfirmResponse>('/leads/import/from-followers', {
+    method: 'POST',
+    body: {
+      campaign_id: campaignId,
+      account_id: accountId,
+      amount,
+    },
+  })
+}

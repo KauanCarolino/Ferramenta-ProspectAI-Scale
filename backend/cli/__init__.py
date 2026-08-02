@@ -20,6 +20,7 @@ from rich.table import Table
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from database.models.account import Account
 from database.models.campaign import Campaign
 from database.models.lead import Lead
 from database.session import SessionLocal, init_db
@@ -32,6 +33,7 @@ from services.importer.service import confirm_import, preview_import
 from services.logging.service import list_logs
 from services.scheduler.service import list_campaign_jobs
 from services.scheduler.worker import process_due_jobs
+from services.sourcing.service import pull_and_confirm_followers
 
 app = typer.Typer(name="prospectai", help="ProspectAI Scale — CLI operacional", no_args_is_help=True)
 campaign_app = typer.Typer(help="Gerenciar campanhas")
@@ -96,6 +98,43 @@ def import_leads(
             )
         else:
             console.print("[yellow]Simulação[/yellow] — use --confirm para persistir.")
+    finally:
+        db.close()
+
+
+@app.command("pull-followers")
+def pull_followers(
+    campaign: str = typer.Option(..., "--campaign", "-c", help="Nome ou UUID da campanha"),
+    account: str = typer.Option(..., "--account", "-a", help="Username ou UUID da conta Instagram"),
+    amount: int = typer.Option(150, "--amount", "-n", help="Quantidade de seguidores a importar"),
+    start: bool = typer.Option(
+        False, "--start", help="Já iniciar a campanha (agenda envios respeitando anti-ban)."
+    ),
+) -> None:
+    """Puxar seguidores da conta e importar como leads — sem planilha, sem 1 a 1."""
+    db = _db()
+    try:
+        campaign_obj = _resolve_campaign(db, campaign)
+        account_obj = _resolve_account(db, account)
+        result = pull_and_confirm_followers(
+            db,
+            campaign_id=campaign_obj.id,
+            account_id=account_obj.id,
+            amount=amount,
+        )
+        console.print(
+            f"[green]Seguidores importados[/green] inseridos={result.inserted} "
+            f"ignorados={result.skipped_duplicates}"
+        )
+        if start:
+            started = campaign_service.start_campaign(db, campaign_obj.id)
+            console.print(f"[green]Campanha iniciada[/green] {started.id} → {started.status}")
+        else:
+            console.print(
+                "[dim]Dica:[/dim] rode "
+                f"[cyan]prospectai campaign start {campaign_obj.id}[/cyan] "
+                "para começar o envio automático (respeitando anti-ban)."
+            )
     finally:
         db.close()
 
@@ -514,6 +553,18 @@ def _resolve_campaign(db: Session, campaign: str) -> Campaign:
     obj = db.scalar(select(Campaign).where(Campaign.name == campaign))
     if obj is None:
         console.print(f"[red]Campanha não encontrada:[/red] {campaign}")
+        raise typer.Exit(code=1)
+    return obj
+
+
+def _resolve_account(db: Session, account: str) -> Account:
+    try:
+        aid = uuid.UUID(account)
+        obj = db.get(Account, aid)
+    except ValueError:
+        obj = db.scalar(select(Account).where(Account.username == account.lstrip("@")))
+    if obj is None:
+        console.print(f"[red]Conta não encontrada:[/red] {account}")
         raise typer.Exit(code=1)
     return obj
 
